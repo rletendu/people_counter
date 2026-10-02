@@ -37,6 +37,8 @@ pio run -t upload            # téléverser
 pio device monitor           # moniteur série (9600 bauds)
 ```
 
+Au premier build, PlatformIO installe automatiquement la bibliothèque d'affichage `smougenot/TM1637` définie dans `platformio.ini`.
+
 Deux environnements sont fournis selon le bootloader de la carte :
 
 ```bash
