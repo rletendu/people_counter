@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <EEPROM.h>
 #include <TM1637Display.h>
 
 // ---------- Pins ----------
@@ -13,6 +14,13 @@ const int           MARGIN_CM       = 20;      // how much closer than the empty
 const byte          CONFIRM_READS   = 2;       // consistent readings required to change state
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
+const int           EEPROM_ADDRESS  = 0;
+const uint16_t      EEPROM_MAGIC    = 0x5043;
+
+struct CounterRecord {
+  uint16_t magic;
+  uint16_t count;
+};
 
 // ---------- State ----------
 unsigned int  passCount     = 0;
@@ -21,6 +29,22 @@ bool          personPresent = false;
 bool          blocked       = false;
 byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
+
+void savePassCount() {
+  CounterRecord record = {EEPROM_MAGIC, static_cast<uint16_t>(passCount)};
+  EEPROM.put(EEPROM_ADDRESS, record);
+}
+
+void loadPassCount() {
+  CounterRecord record;
+  EEPROM.get(EEPROM_ADDRESS, record);
+  if (record.magic == EEPROM_MAGIC) {
+    passCount = record.count;
+  } else {
+    passCount = 0;
+    savePassCount();
+  }
+}
 
 // Returns distance in cm, or 0 if no echo (absorbed or out of range)
 int readDistanceCm() {
@@ -43,6 +67,7 @@ void calibrate() {
 }
 
 void setup() {
+  loadPassCount();
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(RESET_BTN, INPUT_PULLUP);
@@ -54,7 +79,10 @@ void setup() {
 void loop() {
   // Reset counter
   if (!digitalRead(RESET_BTN)) {
-    passCount = 0;
+    if (passCount != 0) {
+      passCount = 0;
+      savePassCount();
+    }
     delay(300);
   }
 
@@ -69,7 +97,10 @@ void loop() {
 
       if (personPresent) {
         presenceStart = millis();
-        if (!blocked) passCount++;     // count on arrival, unless blocked
+        if (!blocked) {
+          passCount++;                 // count on arrival, unless blocked
+          savePassCount();
+        }
       } else {
         blocked = false;               // path is clear again, resume counting
       }

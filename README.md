@@ -54,6 +54,7 @@ Si le téléversement échoue avec l'erreur `not in sync`, essaie l'autre enviro
 - **Détection** : deux mesures concordantes sont nécessaires pour changer d'état (anti-parasites). Un passage est compté à l'arrivée de la personne.
 - **Blocage** : si quelque chose reste plus de 10 s devant le capteur, le comptage est suspendu jusqu'à ce que le passage se libère. Le **deux-points allumé** indique que le capteur est bloqué.
 - **Remise à zéro** : bouton sur D3.
+- **Sauvegarde** : le compteur est conservé en EEPROM après une coupure ou un redémarrage. La remise à zéro est également enregistrée.
 
 ## Réglages
 
