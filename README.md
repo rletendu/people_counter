@@ -10,6 +10,7 @@ Boîtier autonome : un capteur à ultrasons fixé sur un côté du sas compte le
 | HC-SR04 (intérieur) ou JSN-SR04T (robuste, zone morte ~20 cm) | |
 | Afficheur 7 segments 4 digits TM1637 | module 4 fils |
 | Bouton poussoir | remise à zéro |
+| Buzzer piézo passif | bip de confirmation |
 | Alimentation | chargeur USB ou powerbank (~50 mA) |
 
 ## Câblage
@@ -26,8 +27,11 @@ Boîtier autonome : un capteur à ultrasons fixé sur un côté du sas compte le
 | TM1637 DIO | D5 |
 | Bouton (une patte) | D3 |
 | Bouton (autre patte) | GND |
+| Buzzer piézo (+) | D6 |
+| Buzzer piézo (-) | GND |
 
 Le bouton utilise `INPUT_PULLUP`, aucune résistance externe n'est nécessaire.
+Le branchement direct sur D6 convient à un piézo passif; un buzzer électromagnétique peut nécessiter un transistor.
 
 ## Compilation et téléversement
 
@@ -50,9 +54,9 @@ Si le téléversement échoue avec l'erreur `not in sync`, essaie l'autre enviro
 
 ## Fonctionnement
 
-- **Calibration** au démarrage : le boîtier mesure la distance au mur d'en face et fixe le seuil de détection à cette distance moins `MARGIN_CM` (20 cm). **Allume-le sas vide.** Pendant la calibration, le deux-points de l'afficheur est allumé.
-- **Détection** : deux mesures concordantes sont nécessaires pour changer d'état (anti-parasites). Un passage est compté à l'arrivée de la personne.
-- **Blocage** : si quelque chose reste plus de 10 s devant le capteur, le comptage est suspendu jusqu'à ce que le passage se libère. Le **deux-points allumé** indique que le capteur est bloqué.
+- **Calibration** au démarrage : le boîtier mesure la distance au mur d'en face et fixe le seuil de détection à cette distance moins `MARGIN_CM` (20 cm). **Allume-le sas vide.** Pendant la calibration, le deux-points de l'afficheur est allumé; un bip confirme sa réussite.
+- **Détection** : deux mesures concordantes sont nécessaires pour changer d'état (anti-parasites). Un bip court confirme chaque passage compté à l'arrivée.
+- **Blocage** : si quelque chose reste plus de 10 s devant le capteur, le comptage est suspendu jusqu'à ce que le passage se libère. Le **deux-points allumé** et deux notes descendantes signalent le blocage.
 - **Remise à zéro** : bouton sur D3.
 - **Sauvegarde** : le compteur est conservé en EEPROM après une coupure ou un redémarrage. La remise à zéro est également enregistrée.
 
@@ -66,6 +70,11 @@ Tout est regroupé en haut de `src/main.cpp` :
 | `CONFIRM_READS` | lectures concordantes requises | 2 |
 | `MAX_PRESENCE_MS` | délai avant l'état « bloqué » | 10000 |
 | `LOOP_DELAY_MS` | pause entre deux mesures | 40 |
+| `CALIBRATION_BEEP_HZ` | fréquence du bip de fin de calibration | 1600 |
+| `COUNT_BEEP_HZ` | fréquence du bip de confirmation | 2200 |
+| `BLOCKED_BEEP_FIRST_HZ` | fréquence de la première note de blocage | 1100 |
+| `BLOCKED_BEEP_SECOND_HZ` | fréquence de la seconde note de blocage | 700 |
+| `BEEP_DURATION_MS` | durée de chaque note (ms) | 35 |
 
 ## Entrées vs passages
 

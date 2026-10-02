@@ -6,6 +6,7 @@
 const int TRIG_PIN  = 9;
 const int ECHO_PIN  = 10;
 const int RESET_BTN = 3;          // to GND, uses INPUT_PULLUP
+const int BUZZER_PIN = 6;
 
 TM1637Display display(4, 5);      // CLK = D4, DIO = D5
 
@@ -14,6 +15,11 @@ const int           MARGIN_CM       = 20;      // how much closer than the empty
 const byte          CONFIRM_READS   = 2;       // consistent readings required to change state
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
+const unsigned int  CALIBRATION_BEEP_HZ = 1600;
+const unsigned int  COUNT_BEEP_HZ   = 2200;
+const unsigned int  BLOCKED_BEEP_FIRST_HZ  = 1100;
+const unsigned int  BLOCKED_BEEP_SECOND_HZ = 700;
+const unsigned long BEEP_DURATION_MS = 35;
 const int           EEPROM_ADDRESS  = 0;
 const uint16_t      EEPROM_MAGIC    = 0x5043;
 
@@ -46,6 +52,12 @@ void loadPassCount() {
   }
 }
 
+void playBlockedAlert() {
+  tone(BUZZER_PIN, BLOCKED_BEEP_FIRST_HZ, BEEP_DURATION_MS);
+  delay(LOOP_DELAY_MS);
+  tone(BUZZER_PIN, BLOCKED_BEEP_SECOND_HZ, BEEP_DURATION_MS);
+}
+
 // Returns distance in cm, or 0 if no echo (absorbed or out of range)
 int readDistanceCm() {
   digitalWrite(TRIG_PIN, LOW);  delayMicroseconds(2);
@@ -64,6 +76,8 @@ void calibrate() {
     delay(200);
   }
   threshold = d - MARGIN_CM;
+  tone(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
+  delay(LOOP_DELAY_MS);
 }
 
 void setup() {
@@ -71,6 +85,7 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(RESET_BTN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
   display.setBrightness(5);
   delay(1000);
   calibrate();
@@ -100,6 +115,7 @@ void loop() {
         if (!blocked) {
           passCount++;                 // count on arrival, unless blocked
           savePassCount();
+          tone(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
         }
       } else {
         blocked = false;               // path is clear again, resume counting
@@ -112,6 +128,7 @@ void loop() {
   // Someone or something stays too long: stop counting until it clears
   if (personPresent && !blocked && millis() - presenceStart > MAX_PRESENCE_MS) {
     blocked = true;
+    playBlockedAlert();
   }
 
   // Display: colon lit = sensor blocked
