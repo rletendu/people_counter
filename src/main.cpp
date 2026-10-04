@@ -2,6 +2,16 @@
 #include <EEPROM.h>
 #include <TM1637Display.h>
 
+#define DEBUG_SERIAL 0
+
+#if DEBUG_SERIAL
+#define DEBUG_PRINT(value) Serial.print(value)
+#define DEBUG_PRINTLN(value) Serial.println(value)
+#else
+#define DEBUG_PRINT(value) ((void)0)
+#define DEBUG_PRINTLN(value) ((void)0)
+#endif
+
 // ---------- Pins ----------
 const int TRIG_PIN  = 9;
 const int ECHO_PIN  = 10;
@@ -35,6 +45,9 @@ bool          personPresent = false;
 bool          blocked       = false;
 byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
+#if DEBUG_SERIAL
+unsigned long lastDebugPrint = 0;
+#endif
 
 void savePassCount() {
   CounterRecord record = {EEPROM_MAGIC, static_cast<uint16_t>(passCount)};
@@ -69,19 +82,33 @@ int readDistanceCm() {
 
 void calibrate() {
   // Power on with an empty passage. Retry until a valid echo is received.
+  DEBUG_PRINTLN(F("Calibration started; keep the passage empty."));
   int d = 0;
   while (d == 0) {
     d = readDistanceCm();
+    DEBUG_PRINT(F("Calibration reading="));
+    DEBUG_PRINT(d);
+    DEBUG_PRINTLN(F(" cm"));
     display.showNumberDecEx(0, 0x40);   // colon lit while calibrating
     delay(200);
   }
   threshold = d - MARGIN_CM;
+  DEBUG_PRINT(F("Initial distance="));
+  DEBUG_PRINT(d);
+  DEBUG_PRINT(F(" cm; calibration threshold="));
+  DEBUG_PRINT(threshold);
+  DEBUG_PRINTLN(F(" cm"));
   tone(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
   delay(LOOP_DELAY_MS);
 }
 
 void setup() {
+#if DEBUG_SERIAL
+  Serial.begin(9600);
+#endif
   loadPassCount();
+  DEBUG_PRINT(F("People counter starting; saved count="));
+  DEBUG_PRINTLN(passCount);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(RESET_BTN, INPUT_PULLUP);
@@ -97,28 +124,53 @@ void loop() {
     if (passCount != 0) {
       passCount = 0;
       savePassCount();
+      DEBUG_PRINTLN(F("Counter reset to 0"));
     }
     delay(300);
   }
 
   // 0 (absorbed echo) also counts as a detection
-  bool detected = readDistanceCm() < threshold;
+  int distanceCm = readDistanceCm();
+  bool detected = distanceCm < threshold;
+
+#if DEBUG_SERIAL
+  if (millis() - lastDebugPrint >= 1000) {
+    lastDebugPrint = millis();
+    DEBUG_PRINT(F("distance="));
+    DEBUG_PRINT(distanceCm);
+    DEBUG_PRINT(F(" cm, detected="));
+    DEBUG_PRINT(detected ? F("yes") : F("no"));
+    DEBUG_PRINT(F(", present="));
+    DEBUG_PRINT(personPresent ? F("yes") : F("no"));
+    DEBUG_PRINT(F(", blocked="));
+    DEBUG_PRINT(blocked ? F("yes") : F("no"));
+    DEBUG_PRINT(F(", count="));
+    DEBUG_PRINTLN(passCount);
+  }
+#endif
 
   // State change with confirmation
   if (detected != personPresent) {
     if (++confirmCount >= CONFIRM_READS) {
       personPresent = detected;
       confirmCount = 0;
+      DEBUG_PRINT(F("Presence changed: "));
+      DEBUG_PRINTLN(personPresent ? F("detected") : F("clear"));
 
       if (personPresent) {
         presenceStart = millis();
         if (!blocked) {
           passCount++;                 // count on arrival, unless blocked
           savePassCount();
+          DEBUG_PRINT(F("Passage counted; count="));
+          DEBUG_PRINTLN(passCount);
           tone(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
+        } else {
+          DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
         }
       } else {
         blocked = false;               // path is clear again, resume counting
+        DEBUG_PRINTLN(F("Path clear; counting resumed"));
       }
     }
   } else {
@@ -128,6 +180,7 @@ void loop() {
   // Someone or something stays too long: stop counting until it clears
   if (personPresent && !blocked && millis() - presenceStart > MAX_PRESENCE_MS) {
     blocked = true;
+    DEBUG_PRINTLN(F("Sensor blocked: presence exceeded timeout"));
     playBlockedAlert();
   }
 
