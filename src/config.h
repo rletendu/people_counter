@@ -21,6 +21,8 @@ const int BUZZER_PIN = 6;
 const int LASER_PIN = 7;          // aiming laser, via transistor (module draws more than a pin can source directly)
 const int TM1637_CLK_PIN = 4;
 const int TM1637_DIO_PIN = 5;
+// VL53L1X ToF sensor: hardware I2C, fixed by the chip, not software-selectable.
+// SDA = A4, SCL = A5. No const here since Wire.begin() takes no pin arguments.
 
 // ---------- Settings ----------
 const int           MARGIN_CM       = 20;      // how much closer than the empty wall = detection
