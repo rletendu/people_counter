@@ -25,6 +25,8 @@ const int           MARGIN_CM       = 20;      // how much closer than the empty
 const byte          CONFIRM_READS   = 2;       // consistent readings required to change state
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
+const unsigned long CALIBRATION_MIN_MS = 2000; // minimum snake animation duration
+const unsigned long SNAKE_STEP_MS   = 80;      // snake animation speed
 const unsigned int  CALIBRATION_BEEP_HZ = 1600;
 const unsigned int  COUNT_BEEP_HZ   = 2200;
 const unsigned int  BLOCKED_BEEP_FIRST_HZ  = 1100;
@@ -65,6 +67,22 @@ void loadPassCount() {
   }
 }
 
+// Snake animation: a 3-segment tail runs around the outline of the 4 digits.
+// Path (digit, segment bit): top a, right b/c, bottom d (backwards), left e/f.
+void showSnakeFrame(byte step) {
+  const byte PATH_LEN = 12;
+  const byte SNAKE_LEN = 3;
+  const byte pathDigit[PATH_LEN] = {0, 1, 2, 3, 3, 3, 3, 2, 1, 0, 0, 0};
+  const uint8_t pathSeg[PATH_LEN] = {0x01, 0x01, 0x01, 0x01, 0x02, 0x04,
+                                     0x08, 0x08, 0x08, 0x08, 0x10, 0x20};
+  uint8_t segs[4] = {0, 0, 0, 0};
+  for (byte i = 0; i < SNAKE_LEN; i++) {
+    byte p = (step + PATH_LEN - i) % PATH_LEN;
+    segs[pathDigit[p]] |= pathSeg[p];
+  }
+  display.setSegments(segs);
+}
+
 void playBlockedAlert() {
   tone(BUZZER_PIN, BLOCKED_BEEP_FIRST_HZ, BEEP_DURATION_MS);
   delay(LOOP_DELAY_MS);
@@ -84,13 +102,17 @@ void calibrate() {
   // Power on with an empty passage. Retry until a valid echo is received.
   DEBUG_PRINTLN(F("Calibration started; keep the passage empty."));
   int d = 0;
-  while (d == 0) {
-    d = readDistanceCm();
-    DEBUG_PRINT(F("Calibration reading="));
-    DEBUG_PRINT(d);
-    DEBUG_PRINTLN(F(" cm"));
-    display.showNumberDecEx(0, 0x40);   // colon lit while calibrating
-    delay(200);
+  byte snakeStep = 0;
+  unsigned long calibrationStart = millis();
+  while (d == 0 || millis() - calibrationStart < CALIBRATION_MIN_MS) {
+    if (d == 0) {
+      d = readDistanceCm();
+      DEBUG_PRINT(F("Calibration reading="));
+      DEBUG_PRINT(d);
+      DEBUG_PRINTLN(F(" cm"));
+    }
+    showSnakeFrame(snakeStep++);
+    delay(SNAKE_STEP_MS);
   }
   threshold = d - MARGIN_CM;
   DEBUG_PRINT(F("Initial distance="));
