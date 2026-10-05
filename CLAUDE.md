@@ -1,0 +1,61 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+Standalone passage counter for a small entry corridor ("sas"): an ultrasonic sensor **or** a VL53L1X time-of-flight sensor, selectable at runtime, counts people walking past; the total shows on a 4-digit TM1637 display. Arduino Nano (ATmega328P), no network, no RTC, no SD. All firmware lives in `src/main.cpp`; `README.md` is the user-facing doc (in French) and documents the wiring.
+
+## Build / flash / debug
+
+```bash
+pio run                          # compile default env (nano_old)
+pio run -t upload                # flash
+pio device monitor               # serial, 9600 baud
+pio run -e nano_new -t upload    # original Nano (new bootloader, 115200 upload)
+pio run -e nano_old -t upload    # most CH340 clones (old bootloader, 57600 upload)
+```
+
+Upload failing with `not in sync` means the wrong bootloader env — switch between `nano_old` / `nano_new`. There are no tests and no linter; the only verification is a compile plus on-device behaviour.
+
+Serial output is compiled out by default. Set `DEBUG_SERIAL 1` at the top of `src/main.cpp` to enable `Serial.begin(9600)` and the `DEBUG_PRINT*` macros (they expand to `((void)0)` when 0). This matters on an ATmega328P: the prints and their `F()` strings are a meaningful chunk of flash/RAM, so leave it at 0 for anything resembling a release.
+
+## Architecture
+
+Single `setup()` / `loop()` sketch, ~25 Hz polling (`LOOP_DELAY_MS = 40`), no interrupts and no timers. Everything is in file-scope globals and a handful of free functions. Tunables are a block of `const` at the top of `main.cpp` (margins, beep frequencies, timeouts) — adding a behaviour knob means adding a constant there and documenting it in the README's "Réglages" table.
+
+**Pin assignment is duplicated** between the `const int` block in `main.cpp` (TRIG 9, ECHO 10, button A 3, button B 2, both `INPUT_PULLUP`, buzzer 6, aiming laser 7) and the wiring tables in `README.md`; the TM1637 pins (CLK 4, DIO 5) are positional arguments to the `TM1637Display display(4, 5)` constructor, and the VL53L1X is fixed to the hardware I2C pins (A4/A5) via `Wire`. Change one, change all of them.
+
+**Sensor dispatcher.** `SensorType currentSensor` (`Ultrasonic` or `Tof`) selects which driver `readDistanceCm()` delegates to (`readDistanceUltrasonicCm()` via `pulseIn`, or `readDistanceTofCm()` via the Pololu `VL53L1X` object). Both drivers are always initialized in `setup()` regardless of the active selection — `Wire.begin()` + `tofSensor.init()` run unconditionally, gated only by a `tofReady` flag that `readDistanceTofCm()` checks — so switching sensors from the menu never needs re-initialization. Everything downstream (`calibrate()`, the detection loop) only ever calls the generic `readDistanceCm()` and doesn't know which sensor is active.
+
+**Self-calibration, not a fixed threshold.** `calibrate()` runs at boot and again whenever the menu commits a sensor change. It measures the distance to the opposite wall (using whichever sensor is currently active) and sets `threshold = distance - MARGIN_CM`. It retries until it gets a non-zero reading, so a sensor that never answers — including a ToF mode selected with no VL53L1X wired up — hangs the calibration loop forever by design. Consequence: the device must be powered on (or have its sensor switched) with the passage empty, and the snake animation (minimum `CALIBRATION_MIN_MS`) is the user's cue that calibration is in progress. `setLaser(true)`/`setLaser(false)` bracket the whole function, so the aiming laser lights up for the entire calibration — the moment the device actually needs to be pointed correctly — and turns off once a threshold is set.
+
+**No valid reading is treated as presence.** Both `readDistanceUltrasonicCm()` (timeout) and `readDistanceTofCm()` (timeout, bad `range_status`, or `tofReady == false`) return 0 for "no reading", and detection is `distanceCm < threshold`, so a missing reading (absorbed echo, ToF out of range or unplugged) reads as someone standing there rather than as an empty corridor. Any rewrite of the detection condition has to keep that deliberate, for both sensor types.
+
+**Debounce / blocked state machine.** A detection must agree with itself `CONFIRM_READS` times before `personPresent` flips; the count increments on the *arrival* edge only. If presence lasts past `MAX_PRESENCE_MS` the firmware enters `blocked` and stops counting (an object parked in front of the sensor would otherwise never produce new edges anyway) until the path clears; entering the state plays two descending notes.
+
+**Button / menu / peek state machine (`updateButtons()`).** Two buttons (`BTN_A_PIN` = D3, `BTN_B_PIN` = D2) drive three gestures, resolved from shared press/release edge tracking (`pressStartA/B`, `wasAPressed/wasBPressed`):
+- Both held `RESET_HOLD_MS` (5 s) → reset `passCount` to 0 (`resetArmed` guards against repeat-firing while held; `comboHandled` suppresses a trailing long-press-menu trigger from whichever button is still held after the other is released). While both are held and the hold hasn't reached `RESET_HOLD_MS` yet, `resetCountdownActive`/`resetCountdownValue` (computed in `updateButtons()` from `RESET_HOLD_MS` minus the shorter-held button's elapsed time, rounded up to whole seconds) make `loop()`'s display render a counting-down number (5→1) instead of the passage count, so releasing early is a visible, informed choice rather than a blind hold.
+- One button held alone `LONG_PRESS_MS` (1.2 s) → opens the menu (`inMenu = true`, `menuSensorSelection`/`menuRoiSelection` seeded from `currentSensor`/`currentRoiLevel`). While `inMenu` is true, `loop()` returns early after rendering a blinking 2-digit number — the entire detection/counting/blocked block is skipped and resumes exactly where it left off on exit. The two buttons drive independent axes: releasing button A toggles `menuSensorSelection` (Ultrasonic/ToF), releasing button B cycles `menuRoiSelection` through the three ToF ROI widths (Large/Medium/Narrow). The displayed number is `(sensor digit)*10 + (roi digit)` — tens digit `1`/`2` for Ultrasonic/ToF, units digit `1`/`2`/`3` for Large/Medium/Narrow (e.g. `23` = ToF + Narrow). `MENU_TIMEOUT_MS` (4 s) of inactivity commits both selections to EEPROM; `applyRoiSize()` is called if the ROI level changed, and `calibrate()` chains in if the sensor changed, or if the ROI level changed while ToF is the (newly committed) active sensor.
+- A short press outside the menu (released before `LONG_PRESS_MS`) sets `peekActive`, overlaying the instantaneous distance (`showNumberDec`, or four "g" segments for "no reading") on the display for `PEEK_DURATION_MS` (1.2 s) — this does *not* pause detection/counting, only the display render is substituted. `setLaser(true)` fires at the same time as `peekActive`, so the aiming laser lights up for that same window, letting you check the point of aim after installation without re-running calibration; `setLaser(false)` fires where `loop()` clears `peekActive` on timeout.
+
+An abandoned two-button reset attempt (one button released before 2 s) can also spuriously trigger a peek; this is an accepted quirk, not a bug to fix. Likewise, if the menu is opened while a peek is still active, `loop()`'s early return skips the peek-timeout check (and the laser-off that comes with it) until the menu closes — the laser can stay lit a little past `PEEK_DURATION_MS` in that rare overlap; not worth a guard.
+
+**Display doubles as the status indicator** — there is no LED. The colon (`showNumberDecEx(..., 0x40)`) means blocked; the snake animation means calibrating; a blinking 2-digit number means the menu is open (tens = sensor, units = ToF ROI level); a counting-down single digit (5→1) means a two-button reset is in progress; a plain number means normal operation (or a peek overlay). Buzzer tones distinguish each event (calibration done, passage counted, blocked, menu enter/toggle/exit, reset confirmed, peek click).
+
+**Counter + sensor-mode + ROI persistence, wear-levelled.** `passCount`, `currentSensor`, and `currentRoiLevel` are mirrored to EEPROM as a `CounterRecord {magic, count, sensorMode, roiLevel, sequence, checksum}` with `EEPROM_MAGIC = 0x5046`, but `saveState()` never rewrites the same cell twice in a row: it rotates through `EEPROM_SLOT_COUNT` slots (`1024 / sizeof(CounterRecord)`, ~128) spanning the whole EEPROM, bumping `sequence` each time and stamping a checksum. `loadState()` scans every slot at boot, keeps only those with a valid magic *and* checksum (so a slot half-written by a power loss is ignored), and picks the one with the newest `sequence` (16-bit wraparound handled via signed-difference comparison). No valid slot found (fresh chip, or an older-layout EEPROM, which each magic bump invalidates on purpose) means count 0 / sensor `Ultrasonic` / ROI `Large`, same as before. `saveState()` is still called on every counted passage and every reset/menu-committed change — no batching, so no passage can be lost on power loss — but spreading writes across ~128 slots multiplies EEPROM write endurance from ~100k to ~12.8M total saves.
+
+**Raw passages vs. entries.** The display shows raw passages, not visitors. The README documents halving it (`passCount / 2`) as an intentional user choice, with the rationale that an odd raw number reveals someone still inside — don't "fix" this silently.
+
+## Libraries
+
+- `smougenot/TM1637` resolves to the `TM1637Display` API (`setSegments`, `showNumberDec`, `showNumberDecEx`, `setBrightness`, and the `SEG_*` segment-bit macros) — PlatformIO installs it into `.pio/libdeps/<env>/TM1637` on first build. `showSnakeFrame()` and the peek "no reading" dashes write raw segment bitmasks (bit 0 = segment a, clockwise) rather than digits, so they depend on `setSegments` specifically.
+- `pololu/VL53L1X` wraps the sensor over `Wire`: `setTimeout()`, `init()`, `setDistanceMode(VL53L1X::Long)`, `setMeasurementTimingBudget()`, `startContinuous(period_ms)`, `read()`, and the `ranging_data.{range_mm, range_status}` fields plus `timeoutOccurred()`.
+
+## Hardware notes that constrain code changes
+
+The ultrasonic sensor sits ~1 m up aiming at a wall under ~1.5 m away; beyond that a missing reading stops being distinguishable from a passage (same practical caveat applies to the ToF sensor's own range limit, which is longer). Two people side by side count once. The buzzer is driven directly from D6, which is fine for a passive piezo only. Some cheap VL53L1X breakout boards expect strict 3.3V I2C logic with no level-shifting — check the specific module before wiring it to the Nano's 5V bus.
+
+The VL53L1X's detection cone depends on `currentRoiLevel`: `Large` (16×16 SPAD, default) is ~27°, `Medium` (8×8) is ~20°, `Narrow` (4×4, ST's recommended minimum) is ~15°. Narrowing the ROI collects less reflected light, so it trades range/SNR (noisier readings, especially under `VL53L1X::Long` distance mode) for a smaller cone — useful to avoid double-detecting two people side by side, but don't default to `Narrow` on hardware that needs the full range.
+
+The aiming laser on `LASER_PIN` is driven through a small NPN transistor (base via a ~1 kΩ resistor from the pin, module powered from 5V/GND and switched on the GND side), not straight off the pin — a typical 5V laser diode module draws ~20–40 mA, more than a digital pin should source directly (same caveat as the buzzer, just worse). Use only a low-power module (class 1 or 2, <1 mW): it's wired to light up only during `calibrate()` and `peekActive`, never continuously, specifically so it isn't shining into the passage during normal operation — don't repurpose it as an always-on indicator.
