@@ -19,6 +19,8 @@ const int BTN_A_PIN = 3;          // to GND, uses INPUT_PULLUP; reset combo + me
 const int BTN_B_PIN = 2;          // to GND, uses INPUT_PULLUP; reset combo + menu + peek
 const int BUZZER_PIN = 6;
 const int LASER_PIN = 7;          // aiming laser, via transistor (module draws more than a pin can source directly)
+const int TM1637_CLK_PIN = 4;
+const int TM1637_DIO_PIN = 5;
 
 // ---------- Settings ----------
 const int           MARGIN_CM       = 20;      // how much closer than the empty wall = detection

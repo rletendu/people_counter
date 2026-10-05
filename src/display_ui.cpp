@@ -1,6 +1,8 @@
 #include "display_ui.h"
 
-TM1637Display display(4, 5);      // CLK = D4, DIO = D5
+#include "config.h"
+
+TM1637Display display(TM1637_CLK_PIN, TM1637_DIO_PIN);
 
 // Snake animation: a 3-segment tail runs around the outline of the 4 digits.
 // Path (digit, segment bit): top a, right b/c, bottom d (backwards), left e/f.
