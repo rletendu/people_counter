@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <VL53L1X.h>
 
+#include "buzzer.h"
 #include "config.h"
 #include "display_ui.h"
 #include "storage.h"
@@ -82,13 +83,16 @@ int readDistanceCm() {
 }
 
 void calibrate() {
-  // Power on with an empty passage. Retry until a valid echo is received.
+  // Power on with an empty passage. Retry until a valid echo is received,
+  // or give up after CALIBRATION_TIMEOUT_MS so a dead/miswired sensor
+  // doesn't freeze the device (the menu stays reachable to switch sensors).
   DEBUG_PRINTLN(F("Calibration started; keep the passage empty."));
   setLaser(true);
   int d = 0;
   byte snakeStep = 0;
   unsigned long calibrationStart = millis();
   while (d == 0 || millis() - calibrationStart < CALIBRATION_MIN_MS) {
+    if (d == 0 && millis() - calibrationStart >= CALIBRATION_TIMEOUT_MS) break;
     if (d == 0) {
       d = readDistanceCm();
       DEBUG_PRINT(F("Calibration reading="));
@@ -98,13 +102,21 @@ void calibrate() {
     showSnakeFrame(snakeStep++);
     delay(SNAKE_STEP_MS);
   }
-  threshold = d - MARGIN_CM;
-  DEBUG_PRINT(F("Initial distance="));
-  DEBUG_PRINT(d);
-  DEBUG_PRINT(F(" cm; calibration threshold="));
-  DEBUG_PRINT(threshold);
-  DEBUG_PRINTLN(F(" cm"));
-  TONE_IF_NOT_MUTED(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
+  if (d == 0) {
+    // Timed out: keep the previous threshold (0 at boot = nothing ever counted
+    // until a successful recalibration via the menu or a reboot).
+    DEBUG_PRINT(F("Calibration timed out; keeping threshold="));
+    DEBUG_PRINTLN(threshold);
+    playBlockedAlert();
+  } else {
+    threshold = d - MARGIN_CM;
+    DEBUG_PRINT(F("Initial distance="));
+    DEBUG_PRINT(d);
+    DEBUG_PRINT(F(" cm; calibration threshold="));
+    DEBUG_PRINT(threshold);
+    DEBUG_PRINTLN(F(" cm"));
+    TONE_IF_NOT_MUTED(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
+  }
 
   // Visual feedback: blink the reference distance for 2 seconds with rapid colon toggle
   unsigned long feedbackStart = millis();

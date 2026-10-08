@@ -52,6 +52,7 @@ const byte          CONFIRM_READS   = 2;       // consistent readings required t
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
 const unsigned long CALIBRATION_MIN_MS = 2000; // minimum snake animation duration
+const unsigned long CALIBRATION_TIMEOUT_MS = 10000; // give up if no valid reading by then
 const unsigned long SNAKE_STEP_MS   = 80;      // snake animation speed
 const unsigned int  CALIBRATION_BEEP_HZ = 1600;
 const unsigned int  COUNT_BEEP_HZ   = 2200;
