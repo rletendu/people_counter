@@ -183,11 +183,14 @@ void loop() {
   if (resetCountdownActive) {
     display.showNumberDec(resetCountdownValue);
   } else if (peekActive) {
+    // Fast-blinking colon tells a distance preview apart from the count.
+    bool colonOn = ((now - (peekUntil - PEEK_DURATION_MS)) / PEEK_BLINK_MS) % 2 == 0;
     if (distanceCm == 0) {
-      const uint8_t dashes[4] = {SEG_G, SEG_G, SEG_G, SEG_G};
+      uint8_t dashes[4] = {SEG_G, SEG_G, SEG_G, SEG_G};
+      if (colonOn) dashes[1] |= 0x80;   // colon bit lives on the 2nd digit
       display.setSegments(dashes);
     } else {
-      display.showNumberDec(distanceCm);
+      display.showNumberDecEx(distanceCm, colonOn ? 0x40 : 0x00);
     }
   } else if (blocked) {
     display.showNumberDecEx(passCount, 0x40);

@@ -99,6 +99,7 @@ const unsigned long RESET_HOLD_MS    = 5000; // both buttons held together -> re
 const unsigned long MENU_TIMEOUT_MS  = 4000; // inactivity in the menu -> confirm and exit
 const unsigned long MENU_BLINK_MS    = 300;  // menu display blink period
 const unsigned long PEEK_DURATION_MS = 1200; // short press (outside the menu) distance preview
+const unsigned long PEEK_BLINK_MS    = 100;  // colon toggle during the preview (fast, unlike the steady "blocked" colon)
 
 // Extra sound feedback
 const unsigned int  MENU_ENTER_BEEP_FIRST_HZ  = 1800;
