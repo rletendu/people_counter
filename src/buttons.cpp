@@ -5,9 +5,12 @@
 #include "storage.h"
 
 bool          inMenu              = false;
+bool          inThresholdMenu     = false;   // NEW: threshold menu state
 unsigned long menuBlinkStart      = 0;
+unsigned long thresholdMenuBlinkStart = 0;   // NEW: threshold menu blink timing
 SensorType    menuSensorSelection = SensorType::Ultrasonic;  // toggled by button A
 RoiLevel      menuRoiSelection    = RoiLevel::Large;         // cycled by button B
+uint16_t      menuThresholdValue  = 0;       // NEW: threshold value being edited (0-200 cm)
 bool          resetCountdownActive = false;  // both buttons held, counting down to reset
 int           resetCountdownValue  = 0;      // seconds remaining, shown on the display
 bool          peekActive = false;
@@ -41,6 +44,59 @@ void updateButtons() {
   if (!bPressed) pressStartB = 0;
   wasAPressed = aPressed;
   wasBPressed = bPressed;
+
+  // NEW: Threshold menu handler (long press on button B)
+  if (inThresholdMenu) {
+    bool ignoredReleaseB = false;
+    if (menuIgnoreRelease && openerPin == BTN_B_PIN && releasedB) {
+      menuIgnoreRelease = false;
+      ignoredReleaseB = true;
+    }
+
+    // Button A = decrement by 5 cm (wrap 0 -> 200)
+    if (releasedA) {
+      menuThresholdValue = (menuThresholdValue >= 5)
+                          ? menuThresholdValue - 5
+                          : 200;  // Wrap 0->200
+      menuLastActivity = now;
+      playClickSound();
+    }
+    // Button B = increment by 5 cm (wrap 200 -> 0)
+    if (!ignoredReleaseB && releasedB) {
+      menuThresholdValue = (menuThresholdValue < 200)
+                          ? menuThresholdValue + 5
+                          : 0;  // Wrap 200->0
+      menuLastActivity = now;
+      playClickSound();
+    }
+
+    // Timeout: commit and exit
+    if (now - menuLastActivity >= MENU_TIMEOUT_MS) {
+      uint16_t oldValue = manualThreshold;
+      manualThreshold = menuThresholdValue;
+      saveState();
+      inThresholdMenu = false;
+      openerPin = -1;
+      menuIgnoreRelease = false;
+      DEBUG_PRINT(F("Threshold menu closed; manualThreshold="));
+      DEBUG_PRINTLN(manualThreshold);
+      playMenuExitSound();
+
+      // Trigger calibration if switching from manual to auto (oldValue != 0 && new == 0)
+      // Or set threshold directly if switching to/staying in manual mode
+      if (oldValue != 0 && manualThreshold == 0) {
+        // Switching from manual to auto -> calibrate
+        delay(LOOP_DELAY_MS);
+        calibrate();
+      } else if (manualThreshold != 0) {
+        // Manual mode (new or staying) -> set threshold directly
+        threshold = manualThreshold;
+        DEBUG_PRINT(F("Threshold set to manual value: "));
+        DEBUG_PRINTLN(threshold);
+      }
+    }
+    return;
+  }
 
   if (inMenu) {
     bool ignoredReleaseA = false;
@@ -120,20 +176,34 @@ void updateButtons() {
   bool onlyA = aPressed && !bPressed;
   bool onlyB = bPressed && !aPressed;
   if (!comboHandled) {
+    // Button A long press -> Sensor/ROI menu
     if (onlyA && now - pressStartA >= LONG_PRESS_MS) {
       inMenu = true;
       openerPin = BTN_A_PIN;
-    } else if (onlyB && now - pressStartB >= LONG_PRESS_MS) {
-      inMenu = true;
-      openerPin = BTN_B_PIN;
-    }
-    if (inMenu) {
       menuIgnoreRelease = true;
       menuSensorSelection = currentSensor;
       menuRoiSelection = currentRoiLevel;
       menuLastActivity = now;
       menuBlinkStart = now;
-      DEBUG_PRINTLN(F("Menu opened"));
+      DEBUG_PRINTLN(F("Sensor/ROI menu opened"));
+      playMenuEnterSound();
+      return;
+    }
+    // Button B long press -> Threshold menu
+    else if (onlyB && now - pressStartB >= LONG_PRESS_MS) {
+      inThresholdMenu = true;
+      openerPin = BTN_B_PIN;
+      menuIgnoreRelease = true;
+      // Initialize with current manual threshold, or calibrated threshold rounded to 5cm
+      if (manualThreshold != 0) {
+        menuThresholdValue = manualThreshold;
+      } else {
+        menuThresholdValue = (threshold / 5) * 5;  // Round to nearest 5 cm
+      }
+      if (menuThresholdValue > 200) menuThresholdValue = 200;  // Clamp to max
+      menuLastActivity = now;
+      thresholdMenuBlinkStart = now;
+      DEBUG_PRINTLN(F("Threshold menu opened"));
       playMenuEnterSound();
       return;
     }

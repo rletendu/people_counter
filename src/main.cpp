@@ -34,8 +34,37 @@ void setup() {
 
   initSensors();
 
+  // Check for mute toggle: both buttons pressed at startup
+  // Give 1 second for the user to press buttons after power-on
   delay(1000);
-  calibrate();
+  bool bothPressed = (!digitalRead(BTN_A_PIN) && !digitalRead(BTN_B_PIN));
+  if (bothPressed) {
+    mutedState = !mutedState;
+    saveState();
+    DEBUG_PRINT(F("Mute toggled, now: "));
+    DEBUG_PRINTLN(mutedState ? F("ON") : F("OFF"));
+
+    // Visual feedback: flash the display
+    for (int i = 0; i < 3; i++) {
+      display.showNumberDec(mutedState ? 8888 : 0);
+      delay(200);
+      display.clear();
+      delay(200);
+    }
+    display.showNumberDec(passCount);
+  }
+
+  // Conditional calibration: skip if manual threshold is set
+  if (manualThreshold == 0) {
+    calibrate();  // Auto mode: calibrate normally
+  } else {
+    threshold = manualThreshold;  // Manual mode: use stored value
+    DEBUG_PRINT(F("Manual threshold: "));
+    DEBUG_PRINTLN(threshold);
+    display.showNumberDec(threshold);  // Brief visual feedback
+    delay(1000);
+    display.showNumberDec(passCount);  // Return to count display
+  }
 }
 
 void loop() {
@@ -48,6 +77,18 @@ void loop() {
       int sensorDigit = (menuSensorSelection == SensorType::Tof) ? 2 : 1;
       int roiDigit = static_cast<int>(menuRoiSelection) + 1;
       display.showNumberDec(sensorDigit * 10 + roiDigit);
+    } else {
+      display.clear();
+    }
+    delay(LOOP_DELAY_MS);
+    return;
+  }
+
+  // NEW: Threshold menu display (4-digit blinking value)
+  if (inThresholdMenu) {
+    bool blinkOn = ((now - thresholdMenuBlinkStart) / MENU_BLINK_MS) % 2 == 0;
+    if (blinkOn) {
+      display.showNumberDecEx(menuThresholdValue, 0x00, true);  // Leading zeros
     } else {
       display.clear();
     }
@@ -92,7 +133,7 @@ void loop() {
           saveState();
           DEBUG_PRINT(F("Passage counted; count="));
           DEBUG_PRINTLN(passCount);
-          tone(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
+          TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
         } else {
           DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
         }

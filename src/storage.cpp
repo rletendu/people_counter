@@ -2,7 +2,7 @@
 
 #include <EEPROM.h>
 
-const uint16_t EEPROM_MAGIC = 0x5046;
+const uint16_t EEPROM_MAGIC = 0x5048;  // Bumped from 0x5047 for manualThreshold field
 
 struct CounterRecord {
   uint16_t magic;
@@ -10,6 +10,8 @@ struct CounterRecord {
   uint8_t  sensorMode;   // SensorType
   uint8_t  roiLevel;     // RoiLevel
   uint16_t sequence;     // bumped on every write, to find the newest slot at boot
+  uint8_t  muted;        // 0 = unmuted, 1 = muted
+  uint16_t manualThreshold;  // 0 = auto calibration, >0 = manual threshold in cm
   uint8_t  checksum;     // catches a slot left half-written by a power loss
 };
 
@@ -24,6 +26,8 @@ uint16_t lastSequence = 0;
 unsigned int passCount        = 0;
 SensorType   currentSensor    = SensorType::Ultrasonic;
 RoiLevel     currentRoiLevel  = RoiLevel::Large;
+bool         mutedState       = false;
+uint16_t     manualThreshold  = 0;  // 0 = auto calibration mode
 
 uint8_t computeChecksum(const CounterRecord &record) {
   uint8_t sum = 0;
@@ -35,6 +39,9 @@ uint8_t computeChecksum(const CounterRecord &record) {
   sum += record.roiLevel;
   sum += record.sequence & 0xFF;
   sum += record.sequence >> 8;
+  sum += record.muted;
+  sum += record.manualThreshold & 0xFF;
+  sum += record.manualThreshold >> 8;
   return sum;
 }
 
@@ -43,7 +50,8 @@ void saveState() {
   lastSequence++;
   CounterRecord record = {EEPROM_MAGIC, static_cast<uint16_t>(passCount),
                            static_cast<uint8_t>(currentSensor),
-                           static_cast<uint8_t>(currentRoiLevel), lastSequence, 0};
+                           static_cast<uint8_t>(currentRoiLevel), lastSequence,
+                           static_cast<uint8_t>(mutedState ? 1 : 0), manualThreshold, 0};
   record.checksum = computeChecksum(record);
   EEPROM.put(currentSlot * sizeof(CounterRecord), record);
 }
@@ -74,12 +82,16 @@ void loadState() {
     currentRoiLevel = (best.roiLevel <= static_cast<uint8_t>(RoiLevel::Narrow))
                           ? static_cast<RoiLevel>(best.roiLevel)
                           : RoiLevel::Large;
+    mutedState = (best.muted != 0);
+    manualThreshold = best.manualThreshold;
     currentSlot = bestSlot;
     lastSequence = best.sequence;
   } else {
     passCount = 0;
     currentSensor = SensorType::Ultrasonic;
     currentRoiLevel = RoiLevel::Large;
+    mutedState = false;
+    manualThreshold = 0;  // Default to auto calibration mode
     currentSlot = -1;    // so the first saveState() below lands on slot 0
     lastSequence = 0;
     saveState();

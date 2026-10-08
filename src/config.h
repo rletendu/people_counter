@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define DEBUG_SERIAL 0
+#define DEBUG_SERIAL 1
 
 #if DEBUG_SERIAL
 #define DEBUG_PRINT(value) Serial.print(value)
@@ -11,6 +11,23 @@
 #define DEBUG_PRINT(value) ((void)0)
 #define DEBUG_PRINTLN(value) ((void)0)
 #endif
+
+// Forward declaration for mutedState (defined in storage.cpp)
+extern bool mutedState;
+
+// Volume control: percentage (0-100%) scales beep duration
+// Lower value = shorter beeps = perceived quieter (not true volume reduction)
+// 100 = full duration, 50 = half duration, 30 = very short
+const uint8_t BUZZER_VOLUME_PERCENT = 50;  // 0-100%
+
+// Conditional tone() wrapper: only emit sound if not muted, with volume scaling
+#define TONE_IF_NOT_MUTED(pin, freq, dur) \
+  do { \
+    if (!mutedState) { \
+      unsigned long scaledDur = ((unsigned long)(dur) * BUZZER_VOLUME_PERCENT) / 100; \
+      if (scaledDur > 0) tone(pin, freq, scaledDur); \
+    } \
+  } while(0)
 
 // ---------- Pins ----------
 const int TRIG_PIN  = 9;
@@ -25,6 +42,11 @@ const int TM1637_DIO_PIN = 5;
 // SDA = A4, SCL = A5. No const here since Wire.begin() takes no pin arguments.
 
 // ---------- Settings ----------
+// VL53L1X ToF sensor timing configuration
+// Timing budget in microseconds: measurement integration time
+// Long distance mode minimum: 33 ms, recommended: 100-140 ms for reliable readings
+// Higher values improve range and SNR but reduce max sampling rate
+const unsigned long TOF_TIMING_BUDGET_US = 50000;  // 50 ms (50000 µs)
 const int           MARGIN_CM       = 20;      // how much closer than the empty wall = detection
 const byte          CONFIRM_READS   = 2;       // consistent readings required to change state
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
@@ -36,6 +58,8 @@ const unsigned int  COUNT_BEEP_HZ   = 2200;
 const unsigned int  BLOCKED_BEEP_FIRST_HZ  = 1100;
 const unsigned int  BLOCKED_BEEP_SECOND_HZ = 700;
 const unsigned long BEEP_DURATION_MS = 35;
+const unsigned long CALIBRATION_FEEDBACK_MS = 2000;  // post-calibration feedback duration
+const unsigned long CALIBRATION_BLINK_MS = 100;      // colon toggle interval (rapid)
 
 // Buttons / menu timings
 const unsigned long LONG_PRESS_MS    = 1200; // single button held alone -> open the menu

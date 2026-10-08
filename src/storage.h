@@ -6,6 +6,8 @@
 extern unsigned int passCount;
 extern SensorType   currentSensor;
 extern RoiLevel     currentRoiLevel;
+extern bool         mutedState;
+extern uint16_t     manualThreshold;  // 0 = auto calibration, >0 = manual threshold in cm
 
 void saveState();
 void loadState();

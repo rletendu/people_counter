@@ -23,15 +23,25 @@ void applyRoiSize() {
 }
 
 void initSensors() {
+  DEBUG_PRINTLN(F("Initializing sensors..."));
   Wire.begin();
+  DEBUG_PRINTLN(F("I2C Wire.begin() done"));
   tofSensor.setTimeout(500);
+  DEBUG_PRINTLN(F("Calling tofSensor.init()..."));
   tofReady = tofSensor.init();
   if (tofReady) {
+    DEBUG_PRINTLN(F("tofSensor.init() succeeded"));
     tofSensor.setDistanceMode(VL53L1X::Long);
-    tofSensor.setMeasurementTimingBudget(50000);
+    DEBUG_PRINTLN(F("Distance mode set to Long"));
+    tofSensor.setMeasurementTimingBudget(TOF_TIMING_BUDGET_US);
+    DEBUG_PRINT(F("Timing budget set to "));
+    DEBUG_PRINT(TOF_TIMING_BUDGET_US);
+    DEBUG_PRINTLN(F(" us"));
     applyRoiSize();
-    tofSensor.startContinuous(50);
-    DEBUG_PRINTLN(F("VL53L1X ready"));
+    DEBUG_PRINT(F("ROI size applied for level "));
+    DEBUG_PRINTLN(static_cast<int>(currentRoiLevel));
+    tofSensor.startContinuous(TOF_TIMING_BUDGET_US / 1000);
+    DEBUG_PRINTLN(F("VL53L1X ready and started continuous mode"));
   } else {
     DEBUG_PRINTLN(F("VL53L1X not found; ToF mode will stall in calibration"));
   }
@@ -48,9 +58,18 @@ static int readDistanceUltrasonicCm() {
 
 // Returns distance in cm, or 0 if the ToF sensor isn't ready / has no valid reading
 static int readDistanceTofCm() {
-  if (!tofReady) return 0;
+  if (!tofReady) {
+    DEBUG_PRINTLN(F("ToF: not ready"));
+    return 0;
+  }
   tofSensor.read();
-  if (tofSensor.timeoutOccurred() || tofSensor.ranging_data.range_status != VL53L1X::RangeValid) {
+  if (tofSensor.timeoutOccurred()) {
+    DEBUG_PRINTLN(F("ToF: timeout occurred"));
+    return 0;
+  }
+  if (tofSensor.ranging_data.range_status != VL53L1X::RangeValid) {
+    DEBUG_PRINT(F("ToF: invalid range_status="));
+    DEBUG_PRINTLN(tofSensor.ranging_data.range_status);
     return 0;
   }
   return tofSensor.ranging_data.range_mm / 10;
@@ -85,7 +104,22 @@ void calibrate() {
   DEBUG_PRINT(F(" cm; calibration threshold="));
   DEBUG_PRINT(threshold);
   DEBUG_PRINTLN(F(" cm"));
-  tone(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
-  delay(LOOP_DELAY_MS);
+  TONE_IF_NOT_MUTED(BUZZER_PIN, CALIBRATION_BEEP_HZ, BEEP_DURATION_MS);
+
+  // Visual feedback: blink the reference distance for 2 seconds with rapid colon toggle
+  unsigned long feedbackStart = millis();
+  while (millis() - feedbackStart < CALIBRATION_FEEDBACK_MS) {
+    bool colonOn = ((millis() - feedbackStart) / CALIBRATION_BLINK_MS) % 2 == 0;
+    if (d == 0) {
+      // No valid reading: show dashes (consistent with peek mode)
+      const uint8_t dashes[4] = {SEG_G, SEG_G, SEG_G, SEG_G};
+      display.setSegments(dashes);
+    } else {
+      // Show distance with alternating colon
+      display.showNumberDecEx(d, colonOn ? 0x40 : 0x00);
+    }
+    delay(LOOP_DELAY_MS);  // 40ms refresh for smooth animation
+  }
+
   setLaser(false);
 }
