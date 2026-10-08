@@ -12,6 +12,8 @@ bool          personPresent = false;
 bool          blocked       = false;
 byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
+bool          clearing      = false;   // path reads clear, waiting out CLEAR_HOLD_MS
+unsigned long clearSince    = 0;
 #if DEBUG_SERIAL
 unsigned long lastDebugPrint = 0;
 #endif
@@ -118,32 +120,38 @@ void loop() {
   }
 #endif
 
-  // State change with confirmation
-  if (detected != personPresent) {
+  // State change: an arrival needs CONFIRM_READS consistent readings, a
+  // departure needs CLEAR_HOLD_MS of continuous clear, so an arm swing or a
+  // flickering reading during one passage can't re-arm the counter.
+  if (detected && !personPresent) {
     if (++confirmCount >= CONFIRM_READS) {
-      personPresent = detected;
+      personPresent = true;
       confirmCount = 0;
-      DEBUG_PRINT(F("Presence changed: "));
-      DEBUG_PRINTLN(personPresent ? F("detected") : F("clear"));
-
-      if (personPresent) {
-        presenceStart = millis();
-        if (!blocked) {
-          passCount++;                 // count on arrival, unless blocked
-          saveState();
-          DEBUG_PRINT(F("Passage counted; count="));
-          DEBUG_PRINTLN(passCount);
-          TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
-        } else {
-          DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
-        }
+      presenceStart = millis();
+      DEBUG_PRINTLN(F("Presence changed: detected"));
+      if (!blocked) {
+        passCount++;                   // count on arrival, unless blocked
+        saveState();
+        DEBUG_PRINT(F("Passage counted; count="));
+        DEBUG_PRINTLN(passCount);
+        TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
       } else {
-        blocked = false;               // path is clear again, resume counting
-        DEBUG_PRINTLN(F("Path clear; counting resumed"));
+        DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
       }
+    }
+  } else if (!detected && personPresent) {
+    if (!clearing) {
+      clearing = true;
+      clearSince = now;
+    } else if (now - clearSince >= CLEAR_HOLD_MS) {
+      personPresent = false;
+      clearing = false;
+      blocked = false;                 // path is clear again, resume counting
+      DEBUG_PRINTLN(F("Presence changed: clear; counting resumed"));
     }
   } else {
     confirmCount = 0;
+    clearing = false;
   }
 
   // Someone or something stays too long: stop counting until it clears

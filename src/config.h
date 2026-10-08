@@ -48,7 +48,8 @@ const int TM1637_DIO_PIN = 5;
 // Higher values improve range and SNR but reduce max sampling rate
 const unsigned long TOF_TIMING_BUDGET_US = 50000;  // 50 ms (50000 µs)
 const int           MARGIN_CM       = 20;      // how much closer than the empty wall = detection
-const byte          CONFIRM_READS   = 2;       // consistent readings required to change state
+const byte          CONFIRM_READS   = 2;       // consistent readings required to confirm an arrival
+const unsigned long CLEAR_HOLD_MS   = 500;     // continuous clear time before the next passage can count
 const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
 const unsigned long CALIBRATION_MIN_MS = 2000; // minimum snake animation duration
