@@ -8,3 +8,5 @@ void initSerialCli();   // Serial.begin() + banner
 // drives the "watch" stream and the laser auto-off. Called once per loop()
 // iteration, after detection, with that iteration's measurement and state.
 void updateSerialCli(int distanceCm, bool present, bool blocked);
+
+bool isCliLaserOn();    // "laser on" in progress, so others don't switch it off

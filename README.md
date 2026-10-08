@@ -47,7 +47,7 @@ Les boutons utilisent `INPUT_PULLUP`, aucune résistance externe n'est nécessai
 Le branchement direct sur D6 convient à un piézo passif; un buzzer électromagnétique peut nécessiter un transistor.
 Le module laser consomme typiquement 20 à 40 mA, trop pour une sortie Nano pilotée en direct : D7 commande un transistor NPN qui coupe l'alimentation du module côté masse, le module restant alimenté en 5V/GND.
 
-⚠️ **Sécurité oculaire** : n'utiliser qu'un module laser basse puissance (classe 1 ou 2, <1 mW). Le firmware ne l'allume que pendant la calibration et l'aperçu distance, jamais en continu — ne pas le câbler "toujours allumé" dans l'axe d'un passage fréquenté.
+⚠️ **Sécurité oculaire** : n'utiliser qu'un module laser basse puissance (classe 1 ou 2, <1 mW). Le firmware ne l'allume que pendant la calibration et l'aperçu distance, jamais en continu — ne pas le câbler "toujours allumé" dans l'axe d'un passage fréquenté. Seule exception : l'option `flash` de la console (désactivée par défaut) déclenche un flash de 80 ms à chaque passage compté, donc **dirigé vers la personne qui passe**, à environ 1 m de haut, c'est-à-dire à hauteur des yeux d'un enfant. La brièveté du flash (bien sous les 0,25 s du réflexe palpébral) est ce qui le rend acceptable avec un module de classe 1 ou 2 ; ne l'active jamais avec un laser plus puissant et n'allonge pas `LASER_FLASH_MS`.
 
 ⚠️ **Niveau logique I2C** : le bus I2C du Nano fonctionne en 5V. Certains modules VL53L1X bon marché n'ont ni régulateur ni translation de niveau et attendent du 3.3V strict sur SDA/SCL — vérifie la documentation du module avant de le câbler directement sur A4/A5 ; sinon alimente-le en 3.3V ou intercale un level-shifter I2C.
 
@@ -93,6 +93,7 @@ La console série est toujours active : branche le Nano en USB et ouvre `pio dev
 | `sensor` | `us` / `tof` | `us` | capteur actif (recalibre) |
 | `roi` | `large` / `medium` / `narrow` (ou `1`/`2`/`3`) | `large` | largeur du cône ToF (recalibre si ToF actif) |
 | `threshold` | `auto` ou 10–400 cm | `auto` | seuil manuel, ou retour à la calibration automatique |
+| `flash` | `on` / `off` | `off` | flash laser bref (80 ms) à chaque passage compté — voir l'avertissement de sécurité |
 | `mute` | `on` / `off` | `off` | mode silencieux |
 | `margin` | 5–100 cm | 20 | marge sous la distance au mur (recalibre) |
 | `confirm` | 1–10 | 2 | lectures concordantes pour valider une arrivée |
@@ -152,6 +153,7 @@ Tout est regroupé dans `src/config.h`. Les valeurs `DEFAULT_*` ne sont que les 
 | `DEFAULT_US_PING_MS` | délai minimal entre deux pings ultrason, datasheet HC-SR04 : ≥ 60 ms (console : `ping`) | 70 |
 | `US_MIN_VALID_CM` | une lecture ultrason isolée plus courte est ignorée comme parasite | 10 |
 | `CALIBRATION_SAMPLES` | lectures valides dont la médiane sert au calibrage | 5 |
+| `LASER_FLASH_MS` | durée du flash laser à chaque passage compté (option `flash`), à garder bien sous 250 ms | 80 |
 | `LASER_MAX_ON_MS` | extinction automatique du laser allumé par `laser on` | 30000 |
 | `EEPROM_MAGIC` | signature validant le contenu EEPROM | 0x5046 |
 | `LONG_PRESS_MS` | appui seul tenu pour ouvrir le menu | 1200 |
@@ -185,5 +187,5 @@ L'affichage montre le nombre brut de passages. Si chaque visiteur entre puis res
 - Cette mise à jour change le format d'enregistrement EEPROM (nouveau `EEPROM_MAGIC = 0x5047`, ajout du champ mode silencieux) : au premier flash, le compteur repart une fois à 0, comme lors des précédents changements de format. Le nombre d'emplacements EEPROM passe de ~128 à ~113, mais l'endurance reste excellente (~11,3 millions d'écritures).
 - L'ajout de la console série réserve les 24 derniers octets de l'EEPROM aux réglages (l'anneau du compteur passe de 85 à 83 emplacements, sans changer de format). Au premier démarrage après la mise à jour, le compteur peut revenir à une valeur légèrement antérieure si le dernier enregistrement se trouvait dans ces octets : corrige-le avec `count <n>`.
 - Le HC-SR04 renvoie parfois des distances très courtes (< 10 cm) sans raison. Le firmware espace les pings d'au moins 70 ms (réglable avec `set ping`, 60 ms minimum selon le datasheet) et ignore une lecture courte isolée (deux de suite sont acceptées : un objet réellement collé au capteur reste détecté) ; `status` dans la console affiche le nombre de lectures ignorées (`glitches=`). Si ce nombre grimpe vite, vérifie le matériel : transducteurs affleurant le couvercle (s'ils sont en retrait dans les trous, le son rebondit sur les bords), condensateur de découplage (100 µF + 100 nF) au plus près du VCC du capteur, fils TRIG/ECHO courts.
-- L'ajout du réglage `ping` change le format du bloc de réglages : au premier démarrage après la mise à jour, les réglages de la console reviennent une fois à leurs valeurs par défaut (le compteur, le capteur, la ROI, le seuil manuel et le mode silencieux ne sont pas touchés).
+- Chaque ajout de réglage de la console (`ping`, puis `flash`) change le format du bloc de réglages : au premier démarrage après la mise à jour, les réglages de la console reviennent une fois à leurs valeurs par défaut (le compteur, le capteur, la ROI, le seuil manuel et le mode silencieux ne sont pas touchés).
 - `reboot` relance le programme par un saut logiciel au début du code, pas par un reset matériel du watchdog : l'ancien bootloader des clones Nano (`nano_old`) ne supporte pas ce dernier et redémarre en boucle jusqu'à une coupure d'alimentation.

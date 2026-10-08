@@ -24,6 +24,7 @@ struct Settings {
   uint8_t  brightness;      // TM1637 brightness, 0-7
   uint8_t  tofBudgetMs;     // VL53L1X measurement timing budget
   uint8_t  usPingMs;        // minimum time between two ultrasonic pings
+  uint8_t  laserFlash;      // 1 = brief laser flash on every counted passage
   uint8_t  checksum;
 };
 
@@ -68,6 +69,7 @@ const uint8_t  DEFAULT_BRIGHTNESS    = 5;      const uint8_t  BRIGHTNESS_MAX    
 // previous ping's reverberation comes back as a bogus very short echo; a bit
 // more helps in a small room with hard walls.
 const uint8_t  DEFAULT_US_PING_MS    = 70;     const uint8_t  US_PING_MIN_MS    = 60;    const uint8_t  US_PING_MAX_MS    = 150;
+const uint8_t  DEFAULT_LASER_FLASH   = 0;      // off: it points the laser at whoever walks by
 const uint16_t MANUAL_THRESHOLD_MIN_CM = 10;   const uint16_t MANUAL_THRESHOLD_MAX_CM = 400;
 
 // ---------- Fixed settings ----------
@@ -76,6 +78,9 @@ const uint16_t MANUAL_THRESHOLD_MIN_CM = 10;   const uint16_t MANUAL_THRESHOLD_M
 const int           US_MIN_VALID_CM = 10;
 const byte          CALIBRATION_SAMPLES = 5;   // median of this many valid readings
 const unsigned long LASER_MAX_ON_MS = 30000;   // serial "laser on" auto-off
+// Counted-passage laser flash: hits the person walking by, so it must stay far
+// below the ~0.25 s blink reflex that class 2 laser safety relies on.
+const unsigned long LASER_FLASH_MS  = 80;
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
 const unsigned long CALIBRATION_MIN_MS = 2000; // minimum snake animation duration
 const unsigned long CALIBRATION_TIMEOUT_MS = 10000; // give up if no valid reading by then

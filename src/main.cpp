@@ -15,6 +15,8 @@ byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
 bool          clearing      = false;   // path reads clear, waiting out settings.clearHoldMs
 unsigned long clearSince    = 0;
+bool          laserFlashActive = false;  // counted-passage flash (settings.laserFlash)
+unsigned long laserFlashUntil  = 0;
 #if DEBUG_SERIAL
 unsigned long lastDebugPrint = 0;
 #endif
@@ -135,6 +137,11 @@ void loop() {
         DEBUG_PRINT(F("Passage counted; count="));
         DEBUG_PRINTLN(passCount);
         TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
+        if (settings.laserFlash && !peekActive && !isCliLaserOn()) {
+          setLaser(true);
+          laserFlashActive = true;
+          laserFlashUntil = millis() + LASER_FLASH_MS;
+        }
       } else {
         DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
       }
@@ -168,6 +175,10 @@ void loop() {
   if (peekActive && now >= peekUntil) {
     peekActive = false;
     setLaser(false);
+  }
+  if (laserFlashActive && millis() >= laserFlashUntil) {
+    laserFlashActive = false;
+    if (!peekActive && !isCliLaserOn()) setLaser(false);
   }
   if (resetCountdownActive) {
     display.showNumberDec(resetCountdownValue);

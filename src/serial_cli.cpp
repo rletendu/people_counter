@@ -119,6 +119,11 @@ static void printMuted() {
   Serial.println(onOff(mutedState));
 }
 
+static void printFlash() {
+  Serial.print(F("flash="));
+  Serial.println(onOff(settings.laserFlash));
+}
+
 static void printCount() {
   Serial.print(F("count="));
   Serial.println(passCount);
@@ -129,6 +134,7 @@ static void printStatus() {
   printRoi();
   printThreshold();
   printMuted();
+  printFlash();
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {
     NumParam p;
     memcpy_P(&p, &NUM_PARAMS[i], sizeof(p));
@@ -160,7 +166,8 @@ static void printHelp() {
       "  sensor us|tof\n"
       "  roi large|medium|narrow\n"
       "  threshold auto|10-400 cm\n"
-      "  mute on|off"));
+      "  mute on|off\n"
+      "  flash on|off       laser flash on each counted passage"));
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {
     NumParam p;
     memcpy_P(&p, &NUM_PARAMS[i], sizeof(p));
@@ -260,6 +267,19 @@ static void handleSet(const char *name, const char *value) {
     printMuted();
     return;
   }
+  if (is(name, PSTR("flash"))) {
+    if (is(value, PSTR("on"))) {
+      settings.laserFlash = 1;
+    } else if (is(value, PSTR("off"))) {
+      settings.laserFlash = 0;
+    } else {
+      Serial.println(F("expected: on or off"));
+      return;
+    }
+    saveSettings();
+    printFlash();
+    return;
+  }
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {
     NumParam p;
     memcpy_P(&p, &NUM_PARAMS[i], sizeof(p));
@@ -342,6 +362,10 @@ static void runCommand(char *line) {
   } else {
     Serial.println(F("unknown command (help)"));
   }
+}
+
+bool isCliLaserOn() {
+  return laserOn;
 }
 
 void initSerialCli() {
