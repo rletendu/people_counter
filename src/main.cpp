@@ -5,6 +5,7 @@
 #include "config.h"
 #include "display_ui.h"
 #include "sensors.h"
+#include "serial_cli.h"
 #include "storage.h"
 
 // ---------- Detection state (local to the loop() state machine) ----------
@@ -12,17 +13,16 @@ bool          personPresent = false;
 bool          blocked       = false;
 byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
-bool          clearing      = false;   // path reads clear, waiting out CLEAR_HOLD_MS
+bool          clearing      = false;   // path reads clear, waiting out settings.clearHoldMs
 unsigned long clearSince    = 0;
 #if DEBUG_SERIAL
 unsigned long lastDebugPrint = 0;
 #endif
 
 void setup() {
-#if DEBUG_SERIAL
-  Serial.begin(9600);
-#endif
+  initSerialCli();
   loadState();
+  loadSettings();
   DEBUG_PRINT(F("People counter starting; saved count="));
   DEBUG_PRINTLN(passCount);
   pinMode(TRIG_PIN, OUTPUT);
@@ -32,7 +32,7 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LASER_PIN, OUTPUT);
   setLaser(false);
-  display.setBrightness(5);
+  display.setBrightness(settings.brightness);
 
   initSensors();
 
@@ -120,11 +120,11 @@ void loop() {
   }
 #endif
 
-  // State change: an arrival needs CONFIRM_READS consistent readings, a
-  // departure needs CLEAR_HOLD_MS of continuous clear, so an arm swing or a
+  // State change: an arrival needs settings.confirmReads consistent readings, a
+  // departure needs settings.clearHoldMs of continuous clear, so an arm swing or a
   // flickering reading during one passage can't re-arm the counter.
   if (detected && !personPresent) {
-    if (++confirmCount >= CONFIRM_READS) {
+    if (++confirmCount >= settings.confirmReads) {
       personPresent = true;
       confirmCount = 0;
       presenceStart = millis();
@@ -143,7 +143,7 @@ void loop() {
     if (!clearing) {
       clearing = true;
       clearSince = now;
-    } else if (now - clearSince >= CLEAR_HOLD_MS) {
+    } else if (now - clearSince >= settings.clearHoldMs) {
       personPresent = false;
       clearing = false;
       blocked = false;                 // path is clear again, resume counting
@@ -155,11 +155,13 @@ void loop() {
   }
 
   // Someone or something stays too long: stop counting until it clears
-  if (personPresent && !blocked && millis() - presenceStart > MAX_PRESENCE_MS) {
+  if (personPresent && !blocked && millis() - presenceStart > settings.maxPresenceMs) {
     blocked = true;
     DEBUG_PRINTLN(F("Sensor blocked: presence exceeded timeout"));
     playBlockedAlert();
   }
+
+  updateSerialCli(distanceCm, personPresent, blocked);
 
   // Display: distance peek overrides everything else for a short while,
   // then colon lit = sensor blocked, otherwise the running count.

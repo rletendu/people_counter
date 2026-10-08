@@ -12,19 +12,31 @@
 #define DEBUG_PRINTLN(value) ((void)0)
 #endif
 
-// Forward declaration for mutedState (defined in storage.cpp)
-extern bool mutedState;
+// Runtime-tunable settings, adjustable from the serial console and persisted
+// in their own EEPROM block (see storage.cpp). Defaults/bounds are below.
+struct Settings {
+  uint16_t magic;
+  uint8_t  marginCm;        // how much closer than the empty wall = detection
+  uint8_t  confirmReads;    // consistent readings required to confirm an arrival
+  uint16_t clearHoldMs;     // continuous clear time before the next passage can count
+  uint16_t maxPresenceMs;   // after this, the sensor is considered blocked
+  uint8_t  volumePercent;   // scales beep duration (perceived volume), 0 = silent
+  uint8_t  brightness;      // TM1637 brightness, 0-7
+  uint8_t  tofBudgetMs;     // VL53L1X measurement timing budget
+  uint8_t  usPingMs;        // minimum time between two ultrasonic pings
+  uint8_t  checksum;
+};
 
-// Volume control: percentage (0-100%) scales beep duration
-// Lower value = shorter beeps = perceived quieter (not true volume reduction)
-// 100 = full duration, 50 = half duration, 30 = very short
-const uint8_t BUZZER_VOLUME_PERCENT = 50;  // 0-100%
+// Defined in storage.cpp
+extern bool     mutedState;
+extern Settings settings;
 
 // Conditional tone() wrapper: only emit sound if not muted, with volume scaling
+// Lower volume = shorter beeps = perceived quieter (not true volume reduction)
 #define TONE_IF_NOT_MUTED(pin, freq, dur) \
   do { \
     if (!mutedState) { \
-      unsigned long scaledDur = ((unsigned long)(dur) * BUZZER_VOLUME_PERCENT) / 100; \
+      unsigned long scaledDur = ((unsigned long)(dur) * settings.volumePercent) / 100; \
       if (scaledDur > 0) tone(pin, freq, scaledDur); \
     } \
   } while(0)
@@ -41,16 +53,29 @@ const int TM1637_DIO_PIN = 5;
 // VL53L1X ToF sensor: hardware I2C, fixed by the chip, not software-selectable.
 // SDA = A4, SCL = A5. No const here since Wire.begin() takes no pin arguments.
 
-// ---------- Settings ----------
-// VL53L1X ToF sensor timing configuration
-// Timing budget in microseconds: measurement integration time
-// Long distance mode minimum: 33 ms, recommended: 100-140 ms for reliable readings
-// Higher values improve range and SNR but reduce max sampling rate
-const unsigned long TOF_TIMING_BUDGET_US = 50000;  // 50 ms (50000 µs)
-const int           MARGIN_CM       = 20;      // how much closer than the empty wall = detection
-const byte          CONFIRM_READS   = 2;       // consistent readings required to confirm an arrival
-const unsigned long CLEAR_HOLD_MS   = 500;     // continuous clear time before the next passage can count
-const unsigned long MAX_PRESENCE_MS = 10000;   // after this, the sensor is considered blocked
+// ---------- Runtime settings: defaults and bounds (see Settings above) ----------
+// VL53L1X timing budget: measurement integration time. Long distance mode
+// minimum is 33 ms, 100-140 ms recommended for reliable readings; higher
+// values improve range and SNR but slow down each loop() iteration.
+const uint8_t  DEFAULT_TOF_BUDGET_MS = 50;     const uint8_t  TOF_BUDGET_MIN_MS = 33;    const uint8_t  TOF_BUDGET_MAX_MS = 200;
+const uint8_t  DEFAULT_MARGIN_CM     = 20;     const uint8_t  MARGIN_MIN_CM     = 5;     const uint8_t  MARGIN_MAX_CM     = 100;
+const uint8_t  DEFAULT_CONFIRM_READS = 2;      const uint8_t  CONFIRM_MIN       = 1;     const uint8_t  CONFIRM_MAX       = 10;
+const uint16_t DEFAULT_CLEAR_HOLD_MS = 500;    const uint16_t CLEAR_HOLD_MIN_MS = 100;   const uint16_t CLEAR_HOLD_MAX_MS = 5000;
+const uint16_t DEFAULT_MAX_PRESENCE_MS = 10000; const uint16_t MAX_PRESENCE_MIN_MS = 1000; const uint16_t MAX_PRESENCE_MAX_MS = 60000;
+const uint8_t  DEFAULT_VOLUME_PERCENT = 50;    const uint8_t  VOLUME_MAX        = 100;
+const uint8_t  DEFAULT_BRIGHTNESS    = 5;      const uint8_t  BRIGHTNESS_MAX    = 7;
+// HC-SR04: the datasheet asks for >= 60 ms between pings, otherwise the
+// previous ping's reverberation comes back as a bogus very short echo; a bit
+// more helps in a small room with hard walls.
+const uint8_t  DEFAULT_US_PING_MS    = 70;     const uint8_t  US_PING_MIN_MS    = 60;    const uint8_t  US_PING_MAX_MS    = 150;
+const uint16_t MANUAL_THRESHOLD_MIN_CM = 10;   const uint16_t MANUAL_THRESHOLD_MAX_CM = 400;
+
+// ---------- Fixed settings ----------
+// An isolated ultrasonic reading shorter than this is treated as a glitch
+// (two in a row are accepted: something really is right against the sensor).
+const int           US_MIN_VALID_CM = 10;
+const byte          CALIBRATION_SAMPLES = 5;   // median of this many valid readings
+const unsigned long LASER_MAX_ON_MS = 30000;   // serial "laser on" auto-off
 const unsigned long LOOP_DELAY_MS   = 40;      // ~25 measurements per second
 const unsigned long CALIBRATION_MIN_MS = 2000; // minimum snake animation duration
 const unsigned long CALIBRATION_TIMEOUT_MS = 10000; // give up if no valid reading by then

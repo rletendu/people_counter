@@ -11,3 +11,9 @@ extern uint16_t     manualThreshold;  // 0 = auto calibration, >0 = manual thres
 
 void saveState();
 void loadState();
+
+// Runtime settings (see Settings in config.h), separate EEPROM block.
+void loadSettings();
+void saveSettings();
+void resetSettings();   // back to the DEFAULT_* values, doesn't save
+

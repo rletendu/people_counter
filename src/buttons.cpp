@@ -72,28 +72,13 @@ void updateButtons() {
 
     // Timeout: commit and exit
     if (now - menuLastActivity >= MENU_TIMEOUT_MS) {
-      uint16_t oldValue = manualThreshold;
-      manualThreshold = menuThresholdValue;
-      saveState();
       inThresholdMenu = false;
       openerPin = -1;
       menuIgnoreRelease = false;
       DEBUG_PRINT(F("Threshold menu closed; manualThreshold="));
-      DEBUG_PRINTLN(manualThreshold);
+      DEBUG_PRINTLN(menuThresholdValue);
       playMenuExitSound();
-
-      // Trigger calibration if switching from manual to auto (oldValue != 0 && new == 0)
-      // Or set threshold directly if switching to/staying in manual mode
-      if (oldValue != 0 && manualThreshold == 0) {
-        // Switching from manual to auto -> calibrate
-        delay(LOOP_DELAY_MS);
-        calibrate();
-      } else if (manualThreshold != 0) {
-        // Manual mode (new or staying) -> set threshold directly
-        threshold = manualThreshold;
-        DEBUG_PRINT(F("Threshold set to manual value: "));
-        DEBUG_PRINTLN(threshold);
-      }
+      commitManualThreshold(menuThresholdValue);
     }
     return;
   }
@@ -121,24 +106,12 @@ void updateButtons() {
       playClickSound();
     }
     if (now - menuLastActivity >= MENU_TIMEOUT_MS) {
-      bool sensorChanged = (menuSensorSelection != currentSensor);
-      bool roiChanged = (menuRoiSelection != currentRoiLevel);
-      currentSensor = menuSensorSelection;
-      currentRoiLevel = menuRoiSelection;
-      if (roiChanged) applyRoiSize();
-      saveState();
       inMenu = false;
       openerPin = -1;
       menuIgnoreRelease = false;
-      DEBUG_PRINT(F("Menu closed; sensor="));
-      DEBUG_PRINT(currentSensor == SensorType::Tof ? F("ToF") : F("Ultrasonic"));
-      DEBUG_PRINT(F(", roiWidth="));
-      DEBUG_PRINTLN(ROI_WIDTH_FOR_LEVEL[static_cast<uint8_t>(currentRoiLevel)]);
+      DEBUG_PRINTLN(F("Sensor/ROI menu closed"));
       playMenuExitSound();
-      if (sensorChanged || (roiChanged && currentSensor == SensorType::Tof)) {
-        delay(LOOP_DELAY_MS);
-        calibrate();
-      }
+      commitSensorRoi(menuSensorSelection, menuRoiSelection);
     }
     return;
   }
