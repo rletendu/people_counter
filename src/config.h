@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define DEBUG_SERIAL 1
+#define DEBUG_SERIAL 0
 
 #if DEBUG_SERIAL
 #define DEBUG_PRINT(value) Serial.print(value)
