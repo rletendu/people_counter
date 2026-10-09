@@ -14,6 +14,8 @@ extern bool          resetCountdownActive;
 extern int           resetCountdownValue;
 extern bool          peekActive;
 extern unsigned long peekUntil;
+extern bool          lockedNoticeActive;
+extern unsigned long lockedNoticeUntil;
 
 // Reads both buttons, drives the reset combo / menu / distance-peek state
 // machine. Called once per loop() iteration, before anything else.

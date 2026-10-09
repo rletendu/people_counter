@@ -17,7 +17,7 @@ struct CounterRecord {
 
 // Settings live in a fixed block at the very end of the EEPROM: they're only
 // written on an explicit serial "set", so they need no wear levelling.
-const uint16_t SETTINGS_MAGIC    = 0x5303;  // bumped for laserFlash
+const uint16_t SETTINGS_MAGIC    = 0x5304;  // bumped for buttonLock
 const int      SETTINGS_RESERVED = 24;
 const int      SETTINGS_ADDR     = 1024 - SETTINGS_RESERVED;
 static_assert(sizeof(Settings) <= SETTINGS_RESERVED, "Settings outgrew its EEPROM block");
@@ -123,6 +123,7 @@ void resetSettings() {
   settings.tofBudgetMs   = DEFAULT_TOF_BUDGET_MS;
   settings.usPingMs      = DEFAULT_US_PING_MS;
   settings.laserFlash    = DEFAULT_LASER_FLASH;
+  settings.buttonLock    = DEFAULT_BUTTON_LOCK;
 }
 
 void saveSettings() {
@@ -149,4 +150,5 @@ void loadSettings() {
   settings.tofBudgetMs   = constrain(settings.tofBudgetMs, TOF_BUDGET_MIN_MS, TOF_BUDGET_MAX_MS);
   settings.usPingMs      = constrain(settings.usPingMs, US_PING_MIN_MS, US_PING_MAX_MS);
   settings.laserFlash    = settings.laserFlash ? 1 : 0;
+  settings.buttonLock    = settings.buttonLock ? 1 : 0;
 }

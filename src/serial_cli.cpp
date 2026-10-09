@@ -124,6 +124,11 @@ static void printFlash() {
   Serial.println(onOff(settings.laserFlash));
 }
 
+static void printLock() {
+  Serial.print(F("lock="));
+  Serial.println(onOff(settings.buttonLock));
+}
+
 static void printCount() {
   Serial.print(F("count="));
   Serial.println(passCount);
@@ -135,6 +140,7 @@ static void printStatus() {
   printThreshold();
   printMuted();
   printFlash();
+  printLock();
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {
     NumParam p;
     memcpy_P(&p, &NUM_PARAMS[i], sizeof(p));
@@ -167,7 +173,8 @@ static void printHelp() {
       "  roi large|medium|narrow\n"
       "  threshold auto|10-400 cm\n"
       "  mute on|off\n"
-      "  flash on|off       laser flash on each counted passage"));
+      "  flash on|off       laser flash on each counted passage\n"
+      "  lock on|off        lock the button settings menus"));
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {
     NumParam p;
     memcpy_P(&p, &NUM_PARAMS[i], sizeof(p));
@@ -278,6 +285,19 @@ static void handleSet(const char *name, const char *value) {
     }
     saveSettings();
     printFlash();
+    return;
+  }
+  if (is(name, PSTR("lock"))) {
+    if (is(value, PSTR("on"))) {
+      settings.buttonLock = 1;
+    } else if (is(value, PSTR("off"))) {
+      settings.buttonLock = 0;
+    } else {
+      Serial.println(F("expected: on or off"));
+      return;
+    }
+    saveSettings();
+    printLock();
     return;
   }
   for (uint8_t i = 0; i < NUM_PARAM_COUNT; i++) {

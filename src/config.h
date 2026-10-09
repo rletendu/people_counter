@@ -25,6 +25,7 @@ struct Settings {
   uint8_t  tofBudgetMs;     // VL53L1X measurement timing budget
   uint8_t  usPingMs;        // minimum time between two ultrasonic pings
   uint8_t  laserFlash;      // 1 = brief laser flash on every counted passage
+  uint8_t  buttonLock;      // 1 = button long-press settings menus are disabled
   uint8_t  checksum;
 };
 
@@ -70,6 +71,7 @@ const uint8_t  DEFAULT_BRIGHTNESS    = 5;      const uint8_t  BRIGHTNESS_MAX    
 // more helps in a small room with hard walls.
 const uint8_t  DEFAULT_US_PING_MS    = 70;     const uint8_t  US_PING_MIN_MS    = 60;    const uint8_t  US_PING_MAX_MS    = 150;
 const uint8_t  DEFAULT_LASER_FLASH   = 0;      // off: it points the laser at whoever walks by
+const uint8_t  DEFAULT_BUTTON_LOCK   = 0;      // settings menus reachable from the buttons
 const uint16_t MANUAL_THRESHOLD_MIN_CM = 10;   const uint16_t MANUAL_THRESHOLD_MAX_CM = 400;
 
 // ---------- Fixed settings ----------
@@ -99,6 +101,7 @@ const unsigned long RESET_HOLD_MS    = 5000; // both buttons held together -> re
 const unsigned long MENU_TIMEOUT_MS  = 4000; // inactivity in the menu -> confirm and exit
 const unsigned long MENU_BLINK_MS    = 300;  // menu display blink period
 const unsigned long PEEK_DURATION_MS = 1200; // short press (outside the menu) distance preview
+const unsigned long RESET_BLINK_MS   = 250;  // blink of the small "o" shown during the reset countdown
 const unsigned long PEEK_BLINK_MS    = 100;  // colon toggle during the preview (fast, unlike the steady "blocked" colon)
 
 // Extra sound feedback
@@ -109,6 +112,8 @@ const unsigned int  RESET_BEEP_FIRST_HZ       = 500;
 const unsigned int  RESET_BEEP_SECOND_HZ      = 900;
 const unsigned int  CLICK_BEEP_HZ             = 3000;
 const unsigned long CLICK_DURATION_MS         = 15;
+const unsigned int  LOCKED_BEEP_HZ            = 400;   // long press while the menus are locked
+const unsigned long LOCKED_NOTICE_MS          = 1000;  // "LOC" shown after a locked long press
 
 enum class SensorType : uint8_t { Ultrasonic = 0, Tof = 1 };
 

@@ -38,11 +38,29 @@ void setup() {
 
   initSensors();
 
-  // Check for mute toggle: both buttons pressed at startup
-  // Give 1 second for the user to press buttons after power-on
+  // Power-up gestures, buttons held from power-on (1 s to press them):
+  // both -> toggle mute, A alone -> toggle the button settings-menu lock.
   delay(1000);
-  bool bothPressed = (!digitalRead(BTN_A_PIN) && !digitalRead(BTN_B_PIN));
-  if (bothPressed) {
+  bool aAtBoot = !digitalRead(BTN_A_PIN);
+  bool bAtBoot = !digitalRead(BTN_B_PIN);
+  if (aAtBoot && !bAtBoot) {
+    settings.buttonLock = settings.buttonLock ? 0 : 1;
+    saveSettings();
+    Serial.print(F("lock="));
+    Serial.println(settings.buttonLock ? F("on") : F("off"));
+    for (int i = 0; i < 3; i++) {
+      if (settings.buttonLock) {
+        showLockedText();
+      } else {
+        showUnlockedText();
+      }
+      delay(200);
+      display.clear();
+      delay(200);
+    }
+    display.showNumberDec(passCount);
+  }
+  if (aAtBoot && bAtBoot) {
     mutedState = !mutedState;
     saveState();
     DEBUG_PRINT(F("Mute toggled, now: "));
@@ -176,12 +194,17 @@ void loop() {
     peekActive = false;
     setLaser(false);
   }
+  if (lockedNoticeActive && now >= lockedNoticeUntil) {
+    lockedNoticeActive = false;
+  }
   if (laserFlashActive && millis() >= laserFlashUntil) {
     laserFlashActive = false;
     if (!peekActive && !isCliLaserOn()) setLaser(false);
   }
   if (resetCountdownActive) {
-    display.showNumberDec(resetCountdownValue);
+    showResetCountdown(resetCountdownValue);
+  } else if (lockedNoticeActive) {
+    showLockedText();
   } else if (peekActive) {
     // Fast-blinking colon tells a distance preview apart from the count.
     bool colonOn = ((now - (peekUntil - PEEK_DURATION_MS)) / PEEK_BLINK_MS) % 2 == 0;
