@@ -27,3 +27,7 @@ void playResetConfirmSound() {
 void playClickSound() {
   TONE_IF_NOT_MUTED(BUZZER_PIN, CLICK_BEEP_HZ, CLICK_DURATION_MS);
 }
+
+void playLockedSound() {
+  TONE_IF_NOT_MUTED(BUZZER_PIN, LOCKED_BEEP_HZ, BEEP_DURATION_MS * 3);
+}

@@ -15,6 +15,8 @@ bool          resetCountdownActive = false;  // both buttons held, counting down
 int           resetCountdownValue  = 0;      // seconds remaining, shown on the display
 bool          peekActive = false;
 unsigned long peekUntil  = 0;
+bool          lockedNoticeActive = false;  // "LOC" after a long press while settings.buttonLock
+unsigned long lockedNoticeUntil  = 0;
 
 // Button / menu state private to this file.
 static unsigned long pressStartA = 0;
@@ -72,28 +74,13 @@ void updateButtons() {
 
     // Timeout: commit and exit
     if (now - menuLastActivity >= MENU_TIMEOUT_MS) {
-      uint16_t oldValue = manualThreshold;
-      manualThreshold = menuThresholdValue;
-      saveState();
       inThresholdMenu = false;
       openerPin = -1;
       menuIgnoreRelease = false;
       DEBUG_PRINT(F("Threshold menu closed; manualThreshold="));
-      DEBUG_PRINTLN(manualThreshold);
+      DEBUG_PRINTLN(menuThresholdValue);
       playMenuExitSound();
-
-      // Trigger calibration if switching from manual to auto (oldValue != 0 && new == 0)
-      // Or set threshold directly if switching to/staying in manual mode
-      if (oldValue != 0 && manualThreshold == 0) {
-        // Switching from manual to auto -> calibrate
-        delay(LOOP_DELAY_MS);
-        calibrate();
-      } else if (manualThreshold != 0) {
-        // Manual mode (new or staying) -> set threshold directly
-        threshold = manualThreshold;
-        DEBUG_PRINT(F("Threshold set to manual value: "));
-        DEBUG_PRINTLN(threshold);
-      }
+      commitManualThreshold(menuThresholdValue);
     }
     return;
   }
@@ -121,24 +108,12 @@ void updateButtons() {
       playClickSound();
     }
     if (now - menuLastActivity >= MENU_TIMEOUT_MS) {
-      bool sensorChanged = (menuSensorSelection != currentSensor);
-      bool roiChanged = (menuRoiSelection != currentRoiLevel);
-      currentSensor = menuSensorSelection;
-      currentRoiLevel = menuRoiSelection;
-      if (roiChanged) applyRoiSize();
-      saveState();
       inMenu = false;
       openerPin = -1;
       menuIgnoreRelease = false;
-      DEBUG_PRINT(F("Menu closed; sensor="));
-      DEBUG_PRINT(currentSensor == SensorType::Tof ? F("ToF") : F("Ultrasonic"));
-      DEBUG_PRINT(F(", roiWidth="));
-      DEBUG_PRINTLN(ROI_WIDTH_FOR_LEVEL[static_cast<uint8_t>(currentRoiLevel)]);
+      DEBUG_PRINTLN(F("Sensor/ROI menu closed"));
       playMenuExitSound();
-      if (sensorChanged || (roiChanged && currentSensor == SensorType::Tof)) {
-        delay(LOOP_DELAY_MS);
-        calibrate();
-      }
+      commitSensorRoi(menuSensorSelection, menuRoiSelection);
     }
     return;
   }
@@ -176,6 +151,19 @@ void updateButtons() {
   bool onlyA = aPressed && !bPressed;
   bool onlyB = bPressed && !aPressed;
   if (!comboHandled) {
+    // Menus locked (serial "set lock on" / button A at power-up): a long press
+    // only says so. comboHandled keeps it from repeating while the button is
+    // held, and the release that follows is too long to count as a peek.
+    if (settings.buttonLock &&
+        ((onlyA && now - pressStartA >= LONG_PRESS_MS) ||
+         (onlyB && now - pressStartB >= LONG_PRESS_MS))) {
+      comboHandled = true;
+      lockedNoticeActive = true;
+      lockedNoticeUntil = now + LOCKED_NOTICE_MS;
+      DEBUG_PRINTLN(F("Settings menus locked"));
+      playLockedSound();
+      return;
+    }
     // Button A long press -> Sensor/ROI menu
     if (onlyA && now - pressStartA >= LONG_PRESS_MS) {
       inMenu = true;

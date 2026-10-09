@@ -19,3 +19,28 @@ void showSnakeFrame(byte step) {
   }
   display.setSegments(segs);
 }
+
+void showLockedText() {
+  const uint8_t segs[4] = {SEG_D | SEG_E | SEG_F,                          // L
+                           SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,  // O
+                           SEG_A | SEG_D | SEG_E | SEG_F,                  // C
+                           0};
+  display.setSegments(segs);
+}
+
+void showUnlockedText() {
+  const uint8_t segs[4] = {SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,  // O
+                           SEG_A | SEG_B | SEG_E | SEG_F | SEG_G,          // P
+                           SEG_A | SEG_D | SEG_E | SEG_F | SEG_G,          // E
+                           SEG_C | SEG_E | SEG_G};                         // n
+  display.setSegments(segs);
+}
+
+// Three blinking small "o" (lower half of a 0) + the steady seconds digit:
+// the counter is about to go back to zero.
+void showResetCountdown(uint8_t seconds) {
+  const uint8_t SMALL_O = SEG_C | SEG_D | SEG_E | SEG_G;
+  uint8_t o = ((millis() / RESET_BLINK_MS) % 2 == 0) ? SMALL_O : 0;
+  const uint8_t segs[4] = {o, o, o, display.encodeDigit(seconds)};
+  display.setSegments(segs);
+}

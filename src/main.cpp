@@ -5,6 +5,7 @@
 #include "config.h"
 #include "display_ui.h"
 #include "sensors.h"
+#include "serial_cli.h"
 #include "storage.h"
 
 // ---------- Detection state (local to the loop() state machine) ----------
@@ -12,15 +13,18 @@ bool          personPresent = false;
 bool          blocked       = false;
 byte          confirmCount  = 0;
 unsigned long presenceStart = 0;
+bool          clearing      = false;   // path reads clear, waiting out settings.clearHoldMs
+unsigned long clearSince    = 0;
+bool          laserFlashActive = false;  // counted-passage flash (settings.laserFlash)
+unsigned long laserFlashUntil  = 0;
 #if DEBUG_SERIAL
 unsigned long lastDebugPrint = 0;
 #endif
 
 void setup() {
-#if DEBUG_SERIAL
-  Serial.begin(9600);
-#endif
+  initSerialCli();
   loadState();
+  loadSettings();
   DEBUG_PRINT(F("People counter starting; saved count="));
   DEBUG_PRINTLN(passCount);
   pinMode(TRIG_PIN, OUTPUT);
@@ -30,15 +34,33 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(LASER_PIN, OUTPUT);
   setLaser(false);
-  display.setBrightness(5);
+  display.setBrightness(settings.brightness);
 
   initSensors();
 
-  // Check for mute toggle: both buttons pressed at startup
-  // Give 1 second for the user to press buttons after power-on
+  // Power-up gestures, buttons held from power-on (1 s to press them):
+  // both -> toggle mute, A alone -> toggle the button settings-menu lock.
   delay(1000);
-  bool bothPressed = (!digitalRead(BTN_A_PIN) && !digitalRead(BTN_B_PIN));
-  if (bothPressed) {
+  bool aAtBoot = !digitalRead(BTN_A_PIN);
+  bool bAtBoot = !digitalRead(BTN_B_PIN);
+  if (aAtBoot && !bAtBoot) {
+    settings.buttonLock = settings.buttonLock ? 0 : 1;
+    saveSettings();
+    Serial.print(F("lock="));
+    Serial.println(settings.buttonLock ? F("on") : F("off"));
+    for (int i = 0; i < 3; i++) {
+      if (settings.buttonLock) {
+        showLockedText();
+      } else {
+        showUnlockedText();
+      }
+      delay(200);
+      display.clear();
+      delay(200);
+    }
+    display.showNumberDec(passCount);
+  }
+  if (aAtBoot && bAtBoot) {
     mutedState = !mutedState;
     saveState();
     DEBUG_PRINT(F("Mute toggled, now: "));
@@ -118,40 +140,53 @@ void loop() {
   }
 #endif
 
-  // State change with confirmation
-  if (detected != personPresent) {
-    if (++confirmCount >= CONFIRM_READS) {
-      personPresent = detected;
+  // State change: an arrival needs settings.confirmReads consistent readings, a
+  // departure needs settings.clearHoldMs of continuous clear, so an arm swing or a
+  // flickering reading during one passage can't re-arm the counter.
+  if (detected && !personPresent) {
+    if (++confirmCount >= settings.confirmReads) {
+      personPresent = true;
       confirmCount = 0;
-      DEBUG_PRINT(F("Presence changed: "));
-      DEBUG_PRINTLN(personPresent ? F("detected") : F("clear"));
-
-      if (personPresent) {
-        presenceStart = millis();
-        if (!blocked) {
-          passCount++;                 // count on arrival, unless blocked
-          saveState();
-          DEBUG_PRINT(F("Passage counted; count="));
-          DEBUG_PRINTLN(passCount);
-          TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
-        } else {
-          DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
+      presenceStart = millis();
+      DEBUG_PRINTLN(F("Presence changed: detected"));
+      if (!blocked) {
+        passCount++;                   // count on arrival, unless blocked
+        saveState();
+        DEBUG_PRINT(F("Passage counted; count="));
+        DEBUG_PRINTLN(passCount);
+        TONE_IF_NOT_MUTED(BUZZER_PIN, COUNT_BEEP_HZ, BEEP_DURATION_MS);
+        if (settings.laserFlash && !peekActive && !isCliLaserOn()) {
+          setLaser(true);
+          laserFlashActive = true;
+          laserFlashUntil = millis() + LASER_FLASH_MS;
         }
       } else {
-        blocked = false;               // path is clear again, resume counting
-        DEBUG_PRINTLN(F("Path clear; counting resumed"));
+        DEBUG_PRINTLN(F("Passage not counted; sensor is blocked"));
       }
+    }
+  } else if (!detected && personPresent) {
+    if (!clearing) {
+      clearing = true;
+      clearSince = now;
+    } else if (now - clearSince >= settings.clearHoldMs) {
+      personPresent = false;
+      clearing = false;
+      blocked = false;                 // path is clear again, resume counting
+      DEBUG_PRINTLN(F("Presence changed: clear; counting resumed"));
     }
   } else {
     confirmCount = 0;
+    clearing = false;
   }
 
   // Someone or something stays too long: stop counting until it clears
-  if (personPresent && !blocked && millis() - presenceStart > MAX_PRESENCE_MS) {
+  if (personPresent && !blocked && millis() - presenceStart > settings.maxPresenceMs) {
     blocked = true;
     DEBUG_PRINTLN(F("Sensor blocked: presence exceeded timeout"));
     playBlockedAlert();
   }
+
+  updateSerialCli(distanceCm, personPresent, blocked);
 
   // Display: distance peek overrides everything else for a short while,
   // then colon lit = sensor blocked, otherwise the running count.
@@ -159,14 +194,26 @@ void loop() {
     peekActive = false;
     setLaser(false);
   }
+  if (lockedNoticeActive && now >= lockedNoticeUntil) {
+    lockedNoticeActive = false;
+  }
+  if (laserFlashActive && millis() >= laserFlashUntil) {
+    laserFlashActive = false;
+    if (!peekActive && !isCliLaserOn()) setLaser(false);
+  }
   if (resetCountdownActive) {
-    display.showNumberDec(resetCountdownValue);
+    showResetCountdown(resetCountdownValue);
+  } else if (lockedNoticeActive) {
+    showLockedText();
   } else if (peekActive) {
+    // Fast-blinking colon tells a distance preview apart from the count.
+    bool colonOn = ((now - (peekUntil - PEEK_DURATION_MS)) / PEEK_BLINK_MS) % 2 == 0;
     if (distanceCm == 0) {
-      const uint8_t dashes[4] = {SEG_G, SEG_G, SEG_G, SEG_G};
+      uint8_t dashes[4] = {SEG_G, SEG_G, SEG_G, SEG_G};
+      if (colonOn) dashes[1] |= 0x80;   // colon bit lives on the 2nd digit
       display.setSegments(dashes);
     } else {
-      display.showNumberDec(distanceCm);
+      display.showNumberDecEx(distanceCm, colonOn ? 0x40 : 0x00);
     }
   } else if (blocked) {
     display.showNumberDecEx(passCount, 0x40);
